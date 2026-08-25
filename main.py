@@ -459,6 +459,10 @@ def start_background_loop():
 # ================= Flask Web GUI =================
 app = Flask(__name__)
 
+@app.route('/health')
+def health():
+    return "OK", 200
+
 # নিশ্চিত করুন যে templates/index.html ফোল্ডারে আপনার HTML ফাইলটি আছে
 try:
     with open('templates/index.html', 'r', encoding='utf-8') as f:
