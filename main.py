@@ -523,3 +523,62 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"Server is starting on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# ================= Log Import & Export to MongoDB =================
+@app.route('/import_log', methods=['POST'])
+def import_log():
+    if 'file' not in request.files:
+        return "কোনো ফাইল সিলেক্ট করা হয়নি", 400
+    file = request.files['file']
+    if file.filename == '':
+        return "কোনো ফাইল পাওয়া যায়নি", 400
+    
+    try:
+        content = file.read().decode('utf-8')
+        count = 0
+        for line in content.splitlines():
+            # ফাইলের প্রতিটি লাইন থেকে msg_id, status এবং title বের করে MongoDB-তে সেভ করা
+            match = re.search(r'msg_id:(\d+)\s*\|\s*([^|]+)\s*\|\s*(.*)', line)
+            if match:
+                msg_id = int(match.group(1))
+                status = match.group(2).strip()
+                title = match.group(3).strip()
+                
+                logs_col.update_one(
+                    {"msg_id": msg_id},
+                    {"$set": {
+                        "msg_id": msg_id, 
+                        "title": title, 
+                        "status": status, 
+                        "timestamp": datetime.now()
+                    }},
+                    upsert=True
+                )
+                count += 1
+                
+        add_live_log(f"📥 সফলভাবে {count}টি লগ ফাইল থেকে MongoDB-তে ইম্পোর্ট হয়েছে!")
+        return "<script>alert('Log Imported to Database Successfully!'); window.location='/';</script>"
+    except Exception as e:
+        return f"লগ ইম্পোর্ট করতে সমস্যা হয়েছে: {e}", 500
+
+
+@app.route('/export_log')
+def export_log():
+    try:
+        # MongoDB থেকে সব লগ এনে টেক্সট ফাইল আকারে ডাউনলোড করানো
+        records = logs_col.find({})
+        lines = []
+        for r in records:
+            ts = r.get('timestamp', '')
+            msg_id = r.get('msg_id', '')
+            status = r.get('status', '')
+            title = r.get('title', '')
+            lines.append(f"[{ts}] msg_id:{msg_id} | {status} | {title}\n")
+        
+        temp_export = "export_log.txt"
+        with open(temp_export, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+            
+        return send_file(temp_export, as_attachment=True)
+    except Exception as e:
+        return f"Error exporting logs: {e}", 500
