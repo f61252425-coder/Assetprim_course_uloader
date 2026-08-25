@@ -17,7 +17,9 @@ from telethon.errors import (
     SessionPasswordNeededError, PhoneCodeInvalidError,
     PhoneCodeExpiredError, PhoneNumberInvalidError, FloodWaitError
 )
-from flask import Flask, render_template_string, request, jsonify, send_file
+from telethon.sessions import StringSession
+from pymongo import MongoClient
+from flask import Flask, render_template_string, request, jsonify
 import logging
 
 log = logging.getLogger('werkzeug')
@@ -25,23 +27,29 @@ log.setLevel(logging.ERROR)
 nest_asyncio.apply()
 
 # ================= ফোল্ডার ও কনফিগারেশন =================
-LOG_DIR = 'logs'
 IMAGE_SAVE_PATH = 'downloads/'
-for folder in (LOG_DIR, IMAGE_SAVE_PATH):
-    os.makedirs(folder, exist_ok=True)
-
-LOG_FILE = os.path.join(LOG_DIR, 'upload_log.txt')
+os.makedirs(IMAGE_SAVE_PATH, exist_ok=True)
 
 # 🟢 Security: Environment Variables (Render Dashboard থেকে সেট করতে হবে)
 API_ID = os.getenv('TG_API_ID')
 API_HASH = os.getenv('TG_API_HASH')
 CHANNEL_USERNAME = os.getenv('TG_CHANNEL')
 MESSAGE_SCAN_LIMIT = int(os.getenv('SCAN_LIMIT', '1000'))
+SESSION_STRING = os.getenv('TELEGRAM_STRING_SESSION', '')
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GAS_PROXY_URL = os.getenv('GAS_PROXY_URL')
 GAS_WEB_APP_URL = os.getenv('GAS_WEB_APP_URL')
 PHP_API_SECRET = os.getenv('PHP_API_SECRET')
+
+# ================= MongoDB Setup =================
+MONGO_URI = os.getenv("MONGO_URI")
+if MONGO_URI:
+    mongo_client = MongoClient(MONGO_URI)
+    db = mongo_client["assetprim_uploader"]
+    logs_col = db["upload_logs"]
+else:
+    print("⚠️ MONGO_URI environment variable is missing!")
 
 app_state = {
     'is_running': False,
@@ -83,19 +91,30 @@ def add_live_log(msg):
         app_state['live_logs'].pop(0)
 
 
+# ================= MongoDB Functions =================
 def log_process(msg_id, title, status):
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now()}] msg_id:{msg_id} | {status} | {title}\n")
-
+    """ডাটাবেসে প্রসেসিং স্ট্যাটাস সেভ বা আপডেট করা"""
+    try:
+        logs_col.update_one(
+            {"msg_id": msg_id},
+            {"$set": {
+                "msg_id": msg_id,
+                "title": title,
+                "status": status,
+                "timestamp": datetime.now()
+            }},
+            upsert=True
+        )
+    except Exception as e:
+        add_live_log(f"⚠️ DB Error: {e}")
 
 def is_processed(msg_id):
-    if not os.path.exists(LOG_FILE):
+    """ডাটাবেসে আগে থেকে SUCCESS স্ট্যাটাস আছে কিনা চেক করা"""
+    try:
+        record = logs_col.find_one({"msg_id": msg_id, "status": "SUCCESS"})
+        return record is not None
+    except Exception:
         return False
-    with open(LOG_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            if f"msg_id:{msg_id} " in line and "SUCCESS" in line:
-                return True
-    return False
 
 
 def slugify(text):
@@ -183,8 +202,9 @@ def get_mega_details(mega_url):
         return {"total_lessons": 0, "total_duration": 0, "preview_url": ""}
 
 
+# ================= Telegram Login =================
 async def tg_check_authorized():
-    client = TelegramClient('session_name', API_ID, API_HASH, device_model=DEVICE_MODEL,
+    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, device_model=DEVICE_MODEL,
                              system_version=SYSTEM_VERSION, app_version=APP_VERSION, loop=tg_loop)
     await client.connect()
     authorized = await client.is_user_authorized()
@@ -193,7 +213,7 @@ async def tg_check_authorized():
 
 
 async def tg_send_code(phone):
-    client = TelegramClient('session_name', API_ID, API_HASH, device_model=DEVICE_MODEL,
+    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, device_model=DEVICE_MODEL,
                              system_version=SYSTEM_VERSION, app_version=APP_VERSION, loop=tg_loop)
     await client.connect()
     if await client.is_user_authorized():
@@ -211,6 +231,12 @@ async def tg_verify_code(code):
         return {"status": "error", "message": "আগে ফোন নম্বর দিয়ে কোড পাঠাও।"}
     try:
         await client.sign_in(phone=phone, code=code)
+        
+        # 🟢 সেশন সেভ এবং প্রিন্ট করা
+        new_session = client.session.save()
+        print(f"\n\n{'='*40}\n🔑 YOUR NEW SESSION STRING:\n{new_session}\n{'='*40}\n⚠️ Please save this in Render Environment Variables as 'TELEGRAM_STRING_SESSION'\n\n")
+        add_live_log("✅ Login Success! Check console for your Session String.")
+        
         await client.disconnect()
         tg_login_state.update({'client': None, 'stage': 'done'})
         return {"status": "success"}
@@ -229,6 +255,12 @@ async def tg_verify_password(password):
         return {"status": "error", "message": "সেশন পাওয়া যায়নি, আবার প্রথম থেকে শুরু করো।"}
     try:
         await client.sign_in(password=password)
+        
+        # 🟢 সেশন সেভ এবং প্রিন্ট করা
+        new_session = client.session.save()
+        print(f"\n\n{'='*40}\n🔑 YOUR NEW SESSION STRING:\n{new_session}\n{'='*40}\n⚠️ Please save this in Render Environment Variables as 'TELEGRAM_STRING_SESSION'\n\n")
+        add_live_log("✅ Login Success! Check console for your Session String.")
+        
         await client.disconnect()
         tg_login_state.update({'client': None, 'stage': 'done'})
         return {"status": "success"}
@@ -236,13 +268,14 @@ async def tg_verify_password(password):
         return {"status": "error", "message": str(error)}
 
 
+# ================= কোর ইঞ্জিন =================
 async def run_bot_engine():
     global app_state
     app_state['status_msg'] = 'Connecting to Telegram...'
-    add_live_log("🚀 ইঞ্জিন স্টার্ট হচ্ছে... (GAS Proxy Mode)")
+    add_live_log("🚀 ইঞ্জিন স্টার্ট হচ্ছে... (MongoDB + StringSession Mode)")
 
     try:
-        client = TelegramClient('session_name', API_ID, API_HASH, device_model=DEVICE_MODEL,
+        client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH, device_model=DEVICE_MODEL,
                                  system_version=SYSTEM_VERSION, app_version=APP_VERSION)
         await client.connect()
 
@@ -319,6 +352,7 @@ async def run_bot_engine():
                 await client.download_media(message.photo, local_filepath)
                 with open(local_filepath, "rb") as img_file:
                     img_b64 = base64.b64encode(img_file.read()).decode('utf-8')
+                os.remove(local_filepath)  # Space বাঁচানোর জন্য ইমেজ ডিলিট করা হচ্ছে
 
             random_discount = random.randint(8, 20)
 
@@ -329,7 +363,7 @@ async def run_bot_engine():
                 "description": str(full_desc),
                 "short_description": str(ai_data.get('short_description') or ''),
                 "price": safe_num(ai_data.get('price')),
-                "discount_price": str(random_discount), 
+                "discount_price": str(random_discount),
                 "category_id": "1",
                 "video_preview_url": str(course_info.get('preview_url') or ''),
                 "total_lessons": str(course_info.get('total_lessons') or 0),
@@ -355,7 +389,7 @@ async def run_bot_engine():
 
                 if "aes.js" in raw_text or "toNumbers" in raw_text:
                     app_state['failed'] += 1
-                    add_live_log("❌ JS Challenge পাওয়া গেছে! হোস্টিং API endpoint whitelist করতে হবে।")
+                    add_live_log("❌ JS Challenge পাওয়া গেছে!")
                     log_process(msg_id, ai_data['title'], "FAILED - Blocked by Host")
                     continue
 
@@ -368,7 +402,7 @@ async def run_bot_engine():
                     result = json.loads(json_str)
                 except ValueError:
                     app_state['failed'] += 1
-                    add_live_log(f"❌ API রেসপন্স JSON নয়: {raw_text[:150]}")
+                    add_live_log(f"❌ API রেসপন্স JSON নয়।")
                     log_process(msg_id, ai_data['title'], "FAILED - Invalid JSON")
                     continue
 
@@ -412,9 +446,7 @@ def start_background_loop():
 # ================= Flask Web GUI =================
 app = Flask(__name__)
 
-# [আপনার আগের HTML_TEMPLATE সম্পূর্ণ একই থাকবে। শুধু সাইজ ছোট করার জন্য এখানে লিখলাম না, আপনি আগের কোডের HTML_TEMPLATE টি এখানে বসিয়ে দেবেন]
 HTML_TEMPLATE = open('templates/index.html', 'r', encoding='utf-8').read() if os.path.exists('templates/index.html') else "<!-- আপনার HTML কোড এখানে বসিয়ে দিন -->" 
-# নোট: আপনি চাইলে আগের কোডের মতো HTML_TEMPLATE ভেরিয়েবলেও পুরো HTML রাখতে পারেন।
 
 @app.route('/')
 def index():
@@ -436,23 +468,6 @@ def stop():
     app_state['is_running'] = False
     app_state['status_msg'] = 'Stopping — please wait for current loop to finish'
     return jsonify({"msg": "Stopped"})
-
-@app.route('/export_log')
-def export_log():
-    if os.path.exists(LOG_FILE):
-        return send_file(LOG_FILE, as_attachment=True)
-    return "No log file found.", 404
-
-@app.route('/import_log', methods=['POST'])
-def import_log():
-    if 'file' not in request.files:
-        return "No file uploaded", 400
-    file = request.files['file']
-    if file.filename == '':
-        return "No selected file", 400
-    file.save(LOG_FILE)
-    add_live_log("📥 নতুন লগ ফাইল ইম্পোর্ট করা হয়েছে! আগের সেশন রিস্টোর হলো।")
-    return "<script>alert('Log Imported Successfully!'); window.location='/';</script>"
 
 @app.route('/telegram_status')
 def telegram_status():
@@ -497,7 +512,6 @@ def telegram_verify_password():
 
 
 if __name__ == '__main__':
-    # Render.com স্বয়ংক্রিয়ভাবে PORT জেনারেট করে। তাই 0.0.0.0 এ পোর্ট অ্যাসাইন করতে হবে।
     port = int(os.environ.get("PORT", 5000))
     print(f"Server is starting on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
