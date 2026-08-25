@@ -1,0 +1,5 @@
+flask
+telethon
+google-generativeai
+requests
+nest-asyncio
