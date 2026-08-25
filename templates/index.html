@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<title>AssetPrim Uploader Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0f19; --card:#131a2b; --card2:#161f36; --accent:#7c5cff;
+    --accent2:#22d3ee; --success:#22c55e; --danger:#f43f5e; --warn:#f59e0b;
+    --text:#e7ecff; --muted:#8b96b8; --border:#232c47;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:'Poppins',sans-serif; background:
+      radial-gradient(circle at 15% 10%, rgba(124,92,255,.15), transparent 40%),
+      radial-gradient(circle at 85% 0%, rgba(34,211,238,.12), transparent 40%),
+      var(--bg);
+    color:var(--text); min-height:100vh; padding:28px 16px 60px;
+  }
+  .wrap{max-width:1000px; margin:0 auto}
+  .brand{display:flex; align-items:center; gap:12px; margin-bottom:26px}
+  .brand .logo{
+    width:44px;height:44px;border-radius:12px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    box-shadow:0 8px 24px rgba(124,92,255,.35);
+  }
+  .brand h1{font-size:20px; margin:0; font-weight:700}
+  .brand p{margin:0; color:var(--muted); font-size:13px}
+
+  .card{
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--border); border-radius:16px; padding:20px;
+    margin-bottom:18px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  .card h5{margin:0 0 12px; font-size:15px; font-weight:600; display:flex; align-items:center; gap:8px}
+  .muted{color:var(--muted); font-size:13px}
+
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px}
+  .stat{
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--border); border-radius:14px; padding:18px; text-align:center;
+  }
+  .stat .num{font-size:30px; font-weight:700}
+  .stat .label{color:var(--muted); font-size:12px; margin-top:4px; letter-spacing:.4px; text-transform:uppercase}
+  .num.info{color:var(--accent2)} .num.ok{color:var(--success)} .num.bad{color:var(--danger)}
+
+  .controls{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:6px}
+  button, .btnlink{
+    border:none; border-radius:10px; padding:11px 20px; font-weight:600; cursor:pointer;
+    font-family:inherit; font-size:14px; transition:.15s transform ease, .15s opacity ease;
+    text-decoration:none; display:inline-block;
+  }
+  button:hover, .btnlink:hover{transform:translateY(-1px); opacity:.94}
+  .btn-start{background:linear-gradient(135deg,#22c55e,#16a34a); color:#04140a}
+  .btn-stop{background:linear-gradient(135deg,#f43f5e,#e11d48); color:#210007}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),#5b3df0); color:#fff}
+  .btn-outline{background:transparent; border:1px solid var(--border); color:var(--text)}
+  button:disabled{opacity:.35; cursor:not-allowed; transform:none}
+
+  input[type=text], input[type=password], input[type=file]{
+    background:#0e1526; border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:10px; font-family:inherit; font-size:14px;
+    flex:1; outline:none;
+  }
+  input[type=text]:focus, input[type=password]:focus{border-color:var(--accent)}
+  .row-flex{display:flex; gap:10px}
+
+  .badge{
+    display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;
+  }
+  .badge-ok{background:rgba(34,197,94,.15); color:#4ade80}
+  .badge-warn{background:rgba(245,158,11,.15); color:#fbbf24}
+
+  .log-box{
+    height:320px; overflow-y:auto; background:#04070f; border:1px solid var(--border);
+    border-radius:12px; padding:14px; font-family:'JetBrains Mono',monospace; font-size:13px;
+    color:#7CFC9A; line-height:1.6;
+  }
+  .log-box::-webkit-scrollbar{width:8px}
+  .log-box::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px}
+
+  .status-line{display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:14px}
+  .status-dot{width:9px;height:9px;border-radius:50%; background:var(--muted)}
+  .status-dot.live{background:var(--success); box-shadow:0 0 10px var(--success)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <div class="logo">🚀</div>
+    <div>
+      <h1>AssetPrim Uploader <span style="color:var(--accent2)">Pro</span></h1>
+      <p>Telegram → Gemini AI → GAS Proxy → AssetPrim Course Marketplace</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h5>📱 Telegram Login</h5>
+    <div class="muted" id="tg-status" style="margin-bottom:10px">Checking session...</div>
+
+    <div id="tg-step-phone" class="row-flex" style="display:none">
+      <input type="text" id="tg-phone" placeholder="+8801XXXXXXXXX (country code সহ)">
+      <button class="btn-primary" onclick="tgSendCode()">Send Code</button>
+    </div>
+
+    <div id="tg-step-code" class="row-flex" style="display:none; margin-top:10px">
+      <input type="text" id="tg-code" placeholder="Telegram থেকে পাওয়া OTP কোড">
+      <button class="btn-start" onclick="tgVerifyCode()">Verify</button>
+    </div>
+
+    <div id="tg-step-password" class="row-flex" style="display:none; margin-top:10px">
+      <input type="password" id="tg-password" placeholder="2FA Password">
+      <button class="btn-primary" onclick="tgVerifyPassword()">Verify Password</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num info" id="scanned">0</div><div class="label">Scanned</div></div>
+    <div class="stat"><div class="num ok" id="uploaded">0</div><div class="label">Uploaded</div></div>
+    <div class="stat"><div class="num bad" id="failed">0</div><div class="label">Failed</div></div>
+  </div>
+
+  <div class="card" style="text-align:center">
+    <div class="status-line">
+      <span class="status-dot" id="statusDot"></span>
+      <h5 id="status" style="margin:0">Status: Idle</h5>
+    </div>
+    <div class="controls">
+      <button class="btn-start" onclick="action('start')" id="btn-start">▶ Start Engine</button>
+      <button class="btn-stop" onclick="action('stop')" id="btn-stop" disabled>⏹ Stop Engine</button>
+    </div>
+  </div>
+
+  <div class="stats" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+      <h5>📥 Import Session Log</h5>
+      <form action="/import_log" method="post" enctype="multipart/form-data" class="row-flex">
+        <input type="file" name="file" required>
+        <button type="submit" class="btn-primary">Upload</button>
+      </form>
+    </div>
+    <div class="card" style="text-align:center">
+      <h5 style="justify-content:center">📤 Export Session Log</h5>
+      <a href="/export_log" class="btnlink btn-outline">Download Log (.txt)</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h5>🖥️ Live Console Logs</h5>
+    <div class="log-box" id="log-console"></div>
+  </div>
+
+</div>
+
+<script>
+  function updateUI() {
+    fetch('/status').then(r => r.json()).then(data => {
+      scanned.innerText = data.scanned;
+      uploaded.innerText = data.uploaded;
+      failed.innerText = data.failed;
+      status.innerText = 'Status: ' + data.status_msg;
+      statusDot.classList.toggle('live', data.is_running);
+
+      btnStart.disabled = data.is_running;
+      btnStop.disabled = !data.is_running;
+
+      logConsole.innerHTML = data.live_logs.join('<br>');
+      logConsole.scrollTop = logConsole.scrollHeight;
+    });
+  }
+
+  function action(type) { fetch('/' + type, {method:'POST'}).then(updateUI); }
+
+  function checkTgStatus() {
+    fetch('/telegram_status').then(r => r.json()).then(data => {
+      if (data.authorized) {
+        tgStatus.innerText = '✅ Telegram লগিন করা আছে';
+        tgStepPhone.style.display = 'none';
+        tgStepCode.style.display = 'none';
+        tgStepPassword.style.display = 'none';
+      } else {
+        tgStatus.innerText = '⚠️ Telegram লগিন করা নেই — ফোন নম্বর দিয়ে লগিন করো';
+        tgStepPhone.style.display = 'flex';
+      }
+    });
+  }
+
+  function tgSendCode() {
+    const phone = tgPhone.value.trim();
+    if (!phone) { alert('ফোন নম্বর দাও'); return; }
+    fetch('/telegram_send_code', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone})})
+      .then(r => r.json()).then(data => {
+        if (data.status === 'code_sent') { tgStatus.innerText = '📩 OTP পাঠানো হয়েছে'; tgStepCode.style.display = 'flex'; }
+        else if (data.status === 'already_authorized') { tgStatus.innerText = '✅ Telegram লগিন করা আছে'; tgStepPhone.style.display = 'none'; }
+        else alert('এরর: ' + (data.message || 'কোড পাঠানো যায়নি।'));
+      });
+  }
+
+  function tgVerifyCode() {
+    const code = tgCode.value.trim();
+    if (!code) { alert('OTP কোড দাও'); return; }
+    fetch('/telegram_verify_code', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})})
+      .then(r => r.json()).then(data => {
+        if (data.status === 'success') { tgStatus.innerText = '✅ লগিন সফল!'; tgStepPhone.style.display='none'; tgStepCode.style.display='none'; }
+        else if (data.status === 'need_password') { tgStatus.innerText = '🔐 2FA পাসওয়ার্ড দরকার'; tgStepPassword.style.display = 'flex'; }
+        else alert('এরর: ' + (data.message || 'কোড ভুল।'));
+      });
+  }
+
+  function tgVerifyPassword() {
+    fetch('/telegram_verify_password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password: tgPassword.value})})
+      .then(r => r.json()).then(data => {
+        if (data.status === 'success') { tgStatus.innerText = '✅ লগিন সফল!'; tgStepPhone.style.display='none'; tgStepCode.style.display='none'; tgStepPassword.style.display='none'; }
+        else alert('এরর: ' + (data.message || 'পাসওয়ার্ড ভুল।'));
+      });
+  }
+
+  const scanned=document.getElementById('scanned'), uploaded=document.getElementById('uploaded'),
+        failed=document.getElementById('failed'), status=document.getElementById('status'),
+        statusDot=document.getElementById('statusDot'), btnStart=document.getElementById('btn-start'),
+        btnStop=document.getElementById('btn-stop'), logConsole=document.getElementById('log-console'),
+        tgStatus=document.getElementById('tg-status'), tgStepPhone=document.getElementById('tg-step-phone'),
+        tgStepCode=document.getElementById('tg-step-code'), tgStepPassword=document.getElementById('tg-step-password'),
+        tgPhone=document.getElementById('tg-phone'), tgCode=document.getElementById('tg-code'),
+        tgPassword=document.getElementById('tg-password');
+
+  setInterval(updateUI, 2000);
+  updateUI();
+  checkTgStatus();
+</script>
+</body>
+</html>
