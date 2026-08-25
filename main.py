@@ -43,11 +43,19 @@ GAS_WEB_APP_URL = os.getenv('GAS_WEB_APP_URL')
 PHP_API_SECRET = os.getenv('PHP_API_SECRET')
 
 # ================= MongoDB Setup =================
+# ================= MongoDB Setup =================
 MONGO_URI = os.getenv("MONGO_URI")
 if MONGO_URI:
-    mongo_client = MongoClient(MONGO_URI)
-    db = mongo_client["assetprim_uploader"]
-    logs_col = db["upload_logs"]
+    try:
+        mongo_client = MongoClient(MONGO_URI)
+        # 🟢 ডাটাবেস কানেকশন টেস্ট করা হচ্ছে (Ping)
+        mongo_client.admin.command('ping')
+        print("✅ MongoDB Successfully Connected!")
+        
+        db = mongo_client["assetprim_uploader"]
+        logs_col = db["upload_logs"]
+    except Exception as e:
+        print(f"❌ MongoDB Connection Error: {e}")
 else:
     print("⚠️ MONGO_URI environment variable is missing!")
 
