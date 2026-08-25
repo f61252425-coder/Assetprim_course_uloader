@@ -242,8 +242,9 @@ async def tg_verify_code(code):
         
         # 🟢 সেশন সেভ এবং প্রিন্ট করা
         new_session = client.session.save()
-        print(f"\n\n{'='*40}\n🔑 YOUR NEW SESSION STRING:\n{new_session}\n{'='*40}\n⚠️ Please save this in Render Environment Variables as 'TELEGRAM_STRING_SESSION'\n\n")
-        add_live_log("✅ Login Success! Check console for your Session String.")
+        # সরাসরি আপনার ওয়েবসাইটের স্ক্রিনে সেশন স্ট্রিং দেখানোর জন্য:
+        add_live_log(f"🔑 YOUR NEW SESSION STRING: {new_session}")
+        add_live_log("✅ Login Success! উপরের স্ট্রিংটি কপি করে Render এ সেভ করুন।")
         
         await client.disconnect()
         tg_login_state.update({'client': None, 'stage': 'done'})
