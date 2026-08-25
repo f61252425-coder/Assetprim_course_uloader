@@ -45,6 +45,9 @@ PHP_API_SECRET = os.getenv('PHP_API_SECRET')
 
 # ================= MongoDB Setup =================
 MONGO_URI = os.getenv("MONGO_URI")
+db = None
+logs_col = None
+
 if MONGO_URI:
     try:
         mongo_client = MongoClient(MONGO_URI)
@@ -102,6 +105,7 @@ def add_live_log(msg):
 # ================= MongoDB Functions =================
 def log_process(msg_id, title, status):
     """ডাটাবেসে প্রসেসিং স্ট্যাটাস সেভ বা আপডেট করা"""
+    if logs_col is None: return
     try:
         logs_col.update_one(
             {"msg_id": msg_id},
@@ -118,6 +122,7 @@ def log_process(msg_id, title, status):
 
 def is_processed(msg_id):
     """ডাটাবেসে আগে থেকে SUCCESS স্ট্যাটাস আছে কিনা চেক করা"""
+    if logs_col is None: return False
     try:
         record = logs_col.find_one({"msg_id": msg_id, "status": "SUCCESS"})
         return record is not None
@@ -242,7 +247,6 @@ async def tg_verify_code(code):
         
         # 🟢 সেশন সেভ এবং প্রিন্ট করা
         new_session = client.session.save()
-        # সরাসরি আপনার ওয়েবসাইটের স্ক্রিনে সেশন স্ট্রিং দেখানোর জন্য:
         add_live_log(f"🔑 YOUR NEW SESSION STRING: {new_session}")
         add_live_log("✅ Login Success! উপরের স্ট্রিংটি কপি করে Render এ সেভ করুন।")
         
@@ -267,8 +271,8 @@ async def tg_verify_password(password):
         
         # 🟢 সেশন সেভ এবং প্রিন্ট করা
         new_session = client.session.save()
-        print(f"\n\n{'='*40}\n🔑 YOUR NEW SESSION STRING:\n{new_session}\n{'='*40}\n⚠️ Please save this in Render Environment Variables as 'TELEGRAM_STRING_SESSION'\n\n")
-        add_live_log("✅ Login Success! Check console for your Session String.")
+        add_live_log(f"🔑 YOUR NEW SESSION STRING: {new_session}")
+        add_live_log("✅ Login Success! উপরের স্ট্রিংটি কপি করে Render এ সেভ করুন।")
         
         await client.disconnect()
         tg_login_state.update({'client': None, 'stage': 'done'})
@@ -455,7 +459,12 @@ def start_background_loop():
 # ================= Flask Web GUI =================
 app = Flask(__name__)
 
-HTML_TEMPLATE = open('templates/index.html', 'r', encoding='utf-8').read() if os.path.exists('templates/index.html') else "<!-- HTML Not Found -->" 
+# নিশ্চিত করুন যে templates/index.html ফোল্ডারে আপনার HTML ফাইলটি আছে
+try:
+    with open('templates/index.html', 'r', encoding='utf-8') as f:
+        HTML_TEMPLATE = f.read()
+except FileNotFoundError:
+    HTML_TEMPLATE = "<h1>HTML File Not Found!</h1><p>দয়া করে templates ফোল্ডারের ভেতর index.html ফাইলটি তৈরি করুন।</p>"
 
 @app.route('/')
 def index():
@@ -528,6 +537,9 @@ def import_log():
     if file.filename == '':
         return "কোনো ফাইল পাওয়া যায়নি", 400
     
+    if logs_col is None:
+        return "ডাটাবেস কানেকশন নেই!", 500
+        
     try:
         content = file.read().decode('utf-8', errors='ignore')
         count = 0
@@ -559,8 +571,11 @@ def import_log():
 
 @app.route('/export_log', methods=['GET'])
 def export_log():
+    if logs_col is None:
+        return "ডাটাবেস কানেকশন নেই!", 500
+        
     try:
-        # কোনো লোকাল ফাইল না বানিয়ে সরাসরি মেমোরি থেকে ডাটা ডাউনলোড করানো (Render-friendly)
+        # কোনো লোকাল ফাইল না বানিয়ে সরাসরি মেমোরি থেকে ডাটা ডাউনলোড করানো
         records = logs_col.find({})
         output = io.StringIO()
         for r in records:
