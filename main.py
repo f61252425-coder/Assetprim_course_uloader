@@ -8,6 +8,7 @@ import asyncio
 import threading
 import time
 import base64
+import io
 from datetime import datetime
 
 import nest_asyncio
@@ -19,7 +20,7 @@ from telethon.errors import (
 )
 from telethon.sessions import StringSession
 from pymongo import MongoClient
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, jsonify, send_file
 import logging
 
 log = logging.getLogger('werkzeug')
@@ -42,7 +43,6 @@ GAS_PROXY_URL = os.getenv('GAS_PROXY_URL')
 GAS_WEB_APP_URL = os.getenv('GAS_WEB_APP_URL')
 PHP_API_SECRET = os.getenv('PHP_API_SECRET')
 
-# ================= MongoDB Setup =================
 # ================= MongoDB Setup =================
 MONGO_URI = os.getenv("MONGO_URI")
 if MONGO_URI:
@@ -454,7 +454,7 @@ def start_background_loop():
 # ================= Flask Web GUI =================
 app = Flask(__name__)
 
-HTML_TEMPLATE = open('templates/index.html', 'r', encoding='utf-8').read() if os.path.exists('templates/index.html') else "<!-- আপনার HTML কোড এখানে বসিয়ে দিন -->" 
+HTML_TEMPLATE = open('templates/index.html', 'r', encoding='utf-8').read() if os.path.exists('templates/index.html') else "<!-- HTML Not Found -->" 
 
 @app.route('/')
 def index():
@@ -518,23 +518,17 @@ def telegram_verify_password():
     except Exception as error:
         return jsonify({"status": "error", "message": str(error)})
 
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    print(f"Server is starting on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
 # ================= Log Import & Export to MongoDB =================
 @app.route('/import_log', methods=['POST'])
 def import_log():
     if 'file' not in request.files:
-        return "কোনো ফাইল সিলেক্ট করা হয়নি", 400
+        return "কোনো ফাইল সিলেক্ট করা হয়নি", 400
     file = request.files['file']
     if file.filename == '':
-        return "কোনো ফাইল পাওয়া যায়নি", 400
+        return "কোনো ফাইল পাওয়া যায়নি", 400
     
     try:
-        content = file.read().decode('utf-8')
+        content = file.read().decode('utf-8', errors='ignore')
         count = 0
         for line in content.splitlines():
             # ফাইলের প্রতিটি লাইন থেকে msg_id, status এবং title বের করে MongoDB-তে সেভ করা
@@ -556,29 +550,41 @@ def import_log():
                 )
                 count += 1
                 
-        add_live_log(f"📥 সফলভাবে {count}টি লগ ফাইল থেকে MongoDB-তে ইম্পোর্ট হয়েছে!")
+        add_live_log(f"📥 সফলভাবে {count}টি লগ ফাইল থেকে MongoDB-তে ইম্পোর্ট হয়েছে!")
         return "<script>alert('Log Imported to Database Successfully!'); window.location='/';</script>"
     except Exception as e:
-        return f"লগ ইম্পোর্ট করতে সমস্যা হয়েছে: {e}", 500
+        return f"লগ ইম্পোর্ট করতে সমস্যা হয়েছে: {e}", 500
 
 
-@app.route('/export_log')
+@app.route('/export_log', methods=['GET'])
 def export_log():
     try:
-        # MongoDB থেকে সব লগ এনে টেক্সট ফাইল আকারে ডাউনলোড করানো
+        # কোনো লোকাল ফাইল না বানিয়ে সরাসরি মেমোরি থেকে ডাটা ডাউনলোড করানো (Render-friendly)
         records = logs_col.find({})
-        lines = []
+        output = io.StringIO()
         for r in records:
             ts = r.get('timestamp', '')
             msg_id = r.get('msg_id', '')
             status = r.get('status', '')
             title = r.get('title', '')
-            lines.append(f"[{ts}] msg_id:{msg_id} | {status} | {title}\n")
+            output.write(f"[{ts}] msg_id:{msg_id} | {status} | {title}\n")
         
-        temp_export = "export_log.txt"
-        with open(temp_export, 'w', encoding='utf-8') as f:
-            f.writelines(lines)
-            
-        return send_file(temp_export, as_attachment=True)
+        mem = io.BytesIO()
+        mem.write(output.getvalue().encode('utf-8'))
+        mem.seek(0)
+        output.close()
+        
+        return send_file(
+            mem,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name='upload_log.txt'
+        )
     except Exception as e:
         return f"Error exporting logs: {e}", 500
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Server is starting on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
